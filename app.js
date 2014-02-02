@@ -172,7 +172,7 @@ var helper = {
 
     }); // read directory
   },
-  writeCsvData: function(imgdir, outfile) {
+  writeCsvData: function(imgdir, outfile, keys) {
 
     // Create Writestream
     var ws = fs.createWriteStream(path.join(imgdir, outfile))
@@ -195,7 +195,7 @@ var helper = {
               .then(function(data) {
                 var parsedData = helper.parseCliExiv(data);
                 console.log("File: ".bold.white + "%s".green + " parsed and added to csv.", item);
-                ws.write(filepath+',"'+parsedData.ImageDescription+'"\n');
+                ws.write(filepath+','+helper.getFields(keys, parsedData)+'\n');
                 ctr++;
               });
             
@@ -210,11 +210,18 @@ var helper = {
 
     }); // read directory
 
+  },
+  getFields: function(keys, data) {
+    var ret = '';
+    for(var i = 0; i < keys.length; i++) {
+      ret += '"'+data[keys[i]]+'",';
+    }
+    return ret.replace(/,+$/, "");
   }
 };
 
 if(argv.output === 'json') {
   helper.writeJsonFiles(argv.dir);
 } else {
-  helper.writeCsvData(argv.dir, 'metadata.csv');
+  helper.writeCsvData(argv.dir, 'metadata.csv', argv._);
 }
