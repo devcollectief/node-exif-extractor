@@ -34,6 +34,9 @@ var argv = require('optimist')
     .demand('d')
     .alias('d', 'dir')
     .describe('d', 'Directory containing image files')
+    .alias('o', 'output')
+    .describe('o', 'Output file type')
+    .default('o','json')
     .argv;
 
 // File Helper Functions
@@ -101,57 +104,117 @@ var helper = {
     }
     return retObj;
   },
-  promiseExif: function(file, dir, name) {
+  promiseJsonExif: function(file, dir, name) {
     var deferred = Q.defer();
 
-    // can use one of the three exif functions
+    // Try with libexif First
     helper.getLibExif(file).then(function(exifdata) {
       fs.writeFile(path.join(dir, name+'.json'), JSON.stringify(exifdata), function(err) {
-        if(err) {
-          deferred.reject(new Error(err));
-        } else {
-          deferred.resolve({ file: path.join(dir, name+'.json') });
-        }
+        if(err) deferred.reject(new Error(err));
+    
+        deferred.resolve({ file: path.join(dir, name+'.json') });
+        
       });
-    }, function(err) {
-      deferred.reject(new Error(err));
+    }, function() {
+
+      // Try Again With Exiv2
+      helper.getCliExiv(file)
+        .then(function(data) {
+          fs.writeFile(path.join(argv.dir, name+'.json'), JSON.stringify(helper.parseCliExiv(data)), function(err) {
+            if (err) deferred.reject(new Error(err));
+
+            deferred.resolve({ file: path.join(dir, name+'.json') });
+
+          });
+        });
+
     });
 
     return deferred.promise;
+  },
+  promiseCsvExif: function(file, dir, name) {
+    var deferred = Q.defer()
+      , ext = file.split('.').pop();
+
+      helper.getCliExiv(file)
+        .then(function(data) {
+          deferred.resolve(data);
+        });
+
+    return deferred.promise;
+  },
+  writeJsonFiles: function(imgdir) {
+    // Main Worker
+    fs.readdir(imgdir, function(err, files) {
+      if (err) { console.log(err.message); return; }
+
+      _.each(files, function(item, index, list) {
+
+        var filepath = path.join(imgdir + '/' + item);
+
+        fs.stat(filepath, function(err, stats) {
+          if (err) { console.log(err.message); return; }
+
+          if(stats.isFile() && helper.isValidFile(item)) {
+
+            helper.promiseJsonExif(filepath, imgdir, helper.fileName(item))
+              .then(function() {
+                console.log("File: ".bold.white + "%s".green + " parsed.", item);
+              }, function(err) {
+                console.log("File: ".bold.white + "%s".red + " not parsed because: " + "%s".red, item, err.message);
+              });
+
+          } // if(isFile & Valid Extension)
+
+        }); // fs.stat cb
+
+      }); // each item in directory
+
+    }); // read directory
+  },
+  writeCsvData: function(imgdir, outfile) {
+
+    // Create Writestream
+    var ws = fs.createWriteStream(path.join(imgdir, outfile))
+      , ctr = 0;
+
+    // Main Worker
+    fs.readdir(imgdir, function(err, files) {
+      if (err) { console.log(err.message); return; }
+
+      _.each(files, function(item, index, list) {
+
+        var filepath = path.join(imgdir + '/' + item);
+
+        fs.stat(filepath, function(err, stats) {
+          if (err) { console.log(err.message); return; }
+
+          if(stats.isFile() && helper.isValidFile(item)) {
+
+            helper.getCliExiv(filepath)
+              .then(function(data) {
+                var parsedData = helper.parseCliExiv(data);
+                console.log("File: ".bold.white + "%s".green + " parsed and added to csv.", item);
+                ws.write(filepath+',"'+parsedData.ImageDescription+'"\n');
+                ctr++;
+              });
+            
+          } // if(isFile & Valid Extension)
+
+        }); // fs.stat cb
+
+        if(ctr === files.length)
+          ws.end();
+
+      }); // each item in directory
+
+    }); // read directory
+
   }
 };
 
-// Main Worker
-fs.readdir(argv.dir, function(err, files) {
-  if (err) { console.log(err.message); return; }
-
-  _.each(files, function(item, index, list) {
-
-    var filepath = path.join(argv.dir + '/' + item);
-
-    fs.stat(filepath, function(err, stats) {
-      if (err) { console.log(err.message); return; }
-
-      if(stats.isFile() && helper.isValidFile(item)) {
-
-        helper.promiseExif(filepath, argv.dir,helper.fileName(item))
-          .then(function() {
-            console.log("File: ".bold.white + "%s".green + " parsed.", item);
-          }, function(err) {
-            console.log("File: ".bold.white + "%s".red + " not parsed because: " + "%s".red, item, err.message);
-            helper.getCliExiv(filepath)
-              .then(function(data) {
-                fs.writeFile(path.join(argv.dir, helper.fileName(item)+'.json'), JSON.stringify(helper.parseCliExiv(data)), function(err) {
-                  if (err) { console.log(err.message); return; }
-                  console.log("File: ".bold.white + "%s".green + " parsed anyway.", item);
-                });
-              });
-          });
-
-      } // if(isFile & Valid Extension)
-
-    }); // fs.stat cb
-
-  }); // each item in directory
-
-}); // read directory
+if(argv.output === 'json') {
+  helper.writeJsonFiles(argv.dir);
+} else {
+  helper.writeCsvData(argv.dir, 'metadata.csv');
+}
