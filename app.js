@@ -3,11 +3,14 @@
 /* External Dependencies
   -libtiff
   -libexif
+  -exiv2
 */
 
 /* Known Issues
   -*.tif files aren't parseable, no idea why
+  +because libexif doesn't do it, added exiv2 parsing 
 */
+
 var colors = require('colors')
   , mkdirp = require('mkdirp')
   , util = require('util')
