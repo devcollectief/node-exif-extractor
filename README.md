@@ -3,8 +3,8 @@ Command line utility for storing exif data from various formats (including `tiff
 
 ## Versions
 
--0.0.1 First set of functionality define folder, search for images and push found exif data to jsons
--0.0.2 Second set of functionality
+- 0.0.1 First set of functionality define folder, search for images and push found exif data to jsons
+- 0.0.2 Second set of functionality
   * Added argument to export to csv data ready for Adobe inDesign (Generate Overview Sheets)
   * Added trailing arguments as exif keys to select when exporting to csv
 
